@@ -5,27 +5,27 @@ order: 6
 # Vesting
 
 - [Vesting](#vesting)
-  - [Intro and Requirements](#intro-and-requirements)
-  - [Note](#note)
-  - [Vesting Account Types](#vesting-account-types)
-  - [Vesting Account Specification](#vesting-account-specification)
-    - [Determining Vesting & Vested Amounts](#determining-vesting--vested-amounts)
-      - [Continuously Vesting Accounts](#continuously-vesting-accounts)
-    - [Periodic Vesting Accounts](#periodic-vesting-accounts)
-      - [Delayed/Discrete Vesting Accounts](#delayeddiscrete-vesting-accounts)
-    - [Transferring/Sending](#transferringsending)
-      - [Keepers/Handlers](#keepershandlers)
-    - [Delegating](#delegating)
-      - [Keepers/Handlers](#keepershandlers-1)
-    - [Undelegating](#undelegating)
-      - [Keepers/Handlers](#keepershandlers-2)
-  - [Keepers & Handlers](#keepers--handlers)
-  - [Genesis Initialization](#genesis-initialization)
-  - [Examples](#examples)
-    - [Simple](#simple)
-    - [Slashing](#slashing)
-    - [Periodic Vesting](#periodic-vesting)
-  - [Glossary](#glossary)
+    - [Intro and Requirements](#intro-and-requirements)
+    - [Note](#note)
+    - [Vesting Account Types](#vesting-account-types)
+    - [Vesting Account Specification](#vesting-account-specification)
+        - [Determining Vesting & Vested Amounts](#determining-vesting--vested-amounts)
+            - [Continuously Vesting Accounts](#continuously-vesting-accounts)
+        - [Periodic Vesting Accounts](#periodic-vesting-accounts)
+            - [Delayed/Discrete Vesting Accounts](#delayeddiscrete-vesting-accounts)
+        - [Transferring/Sending](#transferringsending)
+            - [Keepers/Handlers](#keepershandlers)
+        - [Delegating](#delegating)
+            - [Keepers/Handlers](#keepershandlers-1)
+        - [Undelegating](#undelegating)
+            - [Keepers/Handlers](#keepershandlers-2)
+    - [Keepers & Handlers](#keepers--handlers)
+    - [Genesis Initialization](#genesis-initialization)
+    - [Examples](#examples)
+        - [Simple](#simple)
+        - [Slashing](#slashing)
+        - [Periodic Vesting](#periodic-vesting)
+    - [Glossary](#glossary)
 
 ## Intro and Requirements
 
@@ -88,51 +88,33 @@ type VestingAccount interface {
   GetStartTime() int64
   GetEndTime()   int64
 }
+```
 
-// BaseVestingAccount implements the VestingAccount interface. It contains all
-// the necessary fields needed for any vesting account implementation.
-type BaseVestingAccount struct {
-  BaseAccount
+### BaseVestingAccount
 
-  OriginalVesting  Coins // coins in account upon initialization
-  DelegatedFree    Coins // coins that are vested and delegated
-  DelegatedVesting Coins // coins that vesting and delegated
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/vesting/v1beta1/vesting.proto#L10-L33
 
-  EndTime  int64 // when the coins become unlocked
-}
+### ContinuousVestingAccount
 
-// ContinuousVestingAccount implements the VestingAccount interface. It
-// continuously vests by unlocking coins linearly with respect to time.
-type ContinuousVestingAccount struct {
-  BaseVestingAccount
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/vesting/v1beta1/vesting.proto#L35-L43
 
-  StartTime  int64 // when the coins start to vest
-}
+### DelayedVestingAccount
 
-// DelayedVestingAccount implements the VestingAccount interface. It vests all
-// coins after a specific time, but non prior. In other words, it keeps them
-// locked until a specified time.
-type DelayedVestingAccount struct {
-  BaseVestingAccount
-}
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/vesting/v1beta1/vesting.proto#L45-L53
 
-// VestingPeriod defines a length of time and amount of coins that will vest
-type Period struct {
-  Length int64 // length of the period, in seconds
-  Amount Coins // amount of coins vesting during this period
-}
+### Period
 
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/vesting/v1beta1/vesting.proto#L56-L62
+
+```go
 // Stores all vesting periods passed as part of a PeriodicVestingAccount
 type Periods []Period
 
-// PeriodicVestingAccount implements the VestingAccount interface. It
-// periodically vests by unlocking coins during each specified period
-type PeriodicVestingAccount struct {
-  BaseVestingAccount
-  StartTime int64
-  Periods Periods // the vesting schedule
-}
 ```
+
+### PeriodicVestingAccount
+
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/vesting/v1beta1/vesting.proto#L64-L73
 
 In order to facilitate less ad-hoc type checking and assertions and to support
 flexibility in account balance usage, the existing `x/bank` `ViewKeeper` interface

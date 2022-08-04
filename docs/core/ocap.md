@@ -1,5 +1,5 @@
 <!--
-order: 8
+order: 11
 -->
 
 # Object-Capability Model
@@ -31,15 +31,15 @@ foundation of an object capability system.
 > These structural properties stem from the two rules governing
 > access to existing objects:
 >
-> 1.  An object A can send a message to B only if object A holds a
+> 1. An object A can send a message to B only if object A holds a
 >     reference to B.
-> 2.  An object A can obtain a reference to C only
+> 2. An object A can obtain a reference to C only
 >     if object A receives a message containing a reference to C. As a
 >     consequence of these two rules, an object can obtain a reference
 >     to another object only through a preexisting chain of references.
 >     In short, "Only connectivity begets connectivity."
 
-For an introduction to object-capabilities, see [this article](https://en.wikipedia.org/wiki/Object-capability_model).
+For an introduction to object-capabilities, see this [Wikipedia article](https://en.wikipedia.org/wiki/Object-capability_model).
 
 ## Ocaps in practice
 
@@ -50,11 +50,11 @@ principle:
 
 ```go
 type AppAccount struct {...}
-var account := &AppAccount{
+account := &AppAccount{
     Address: pub.Address(),
     Coins: sdk.Coins{sdk.NewInt64Coin("ATM", 100)},
 }
-var sumValue := externalModule.ComputeSumValue(account)
+sumValue := externalModule.ComputeSumValue(account)
 ```
 
 The method `ComputeSumValue` implies a pure function, yet the implied
@@ -62,14 +62,18 @@ capability of accepting a pointer value is the capability to modify that
 value. The preferred method signature should take a copy instead.
 
 ```go
-var sumValue := externalModule.ComputeSumValue(*account)
+sumValue := externalModule.ComputeSumValue(*account)
 ```
 
 In the Cosmos SDK, you can see the application of this principle in the
 gaia app.
 
-+++ https://github.com/cosmos/gaia/blob/master/app/app.go#L197-L209
++++ https://github.com/cosmos/cosmos-sdk/blob/v0.41.4/simapp/app.go#L249-L273
 
-## Next
+The following diagram shows the current dependencies between keepers.
 
-Learn about [building modules](../building-modules/intro.md) {hide}
+![Keeper dependencies](../uml/svg/keeper_dependencies.svg)
+
+## Next {hide}
+
+Learn about the [`runTx` middleware](./runtx_middleware.md) {hide}

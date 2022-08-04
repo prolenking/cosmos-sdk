@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	yaml "gopkg.in/yaml.v2"
+
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/params"
-	yaml "gopkg.in/yaml.v2"
+	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 )
 
 // Staking params default values
@@ -25,27 +26,30 @@ const (
 	// Default maximum entries in a UBD/RED pair
 	DefaultMaxEntries uint32 = 7
 
-	// DefaultHistorical entries is 0 since it must only be non-zero for
-	// IBC connected chains
-	DefaultHistoricalEntries uint32 = 0
+	// DefaultHistorical entries is 10000. Apps that don't use IBC can ignore this
+	// value by not adding the staking module to the application module manager's
+	// SetOrderBeginBlockers.
+	DefaultHistoricalEntries uint32 = 10000
 )
 
-// nolint - Keys for parameter access
 var (
 	KeyUnbondingTime     = []byte("UnbondingTime")
 	KeyMaxValidators     = []byte("MaxValidators")
-	KeyMaxEntries        = []byte("KeyMaxEntries")
+	KeyMaxEntries        = []byte("MaxEntries")
 	KeyBondDenom         = []byte("BondDenom")
 	KeyHistoricalEntries = []byte("HistoricalEntries")
+	KeyPowerReduction    = []byte("PowerReduction")
 )
 
-var _ params.ParamSet = (*Params)(nil)
+var _ paramtypes.ParamSet = (*Params)(nil)
+
+// ParamTable for staking module
+func ParamKeyTable() paramtypes.KeyTable {
+	return paramtypes.NewKeyTable().RegisterParamSet(&Params{})
+}
 
 // NewParams creates a new Params instance
-func NewParams(
-	unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string,
-) Params {
-
+func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string) Params {
 	return Params{
 		UnbondingTime:     unbondingTime,
 		MaxValidators:     maxValidators,
@@ -56,13 +60,13 @@ func NewParams(
 }
 
 // Implements params.ParamSet
-func (p *Params) ParamSetPairs() params.ParamSetPairs {
-	return params.ParamSetPairs{
-		params.NewParamSetPair(KeyUnbondingTime, &p.UnbondingTime, validateUnbondingTime),
-		params.NewParamSetPair(KeyMaxValidators, &p.MaxValidators, validateMaxValidators),
-		params.NewParamSetPair(KeyMaxEntries, &p.MaxEntries, validateMaxEntries),
-		params.NewParamSetPair(KeyHistoricalEntries, &p.HistoricalEntries, validateHistoricalEntries),
-		params.NewParamSetPair(KeyBondDenom, &p.BondDenom, validateBondDenom),
+func (p *Params) ParamSetPairs() paramtypes.ParamSetPairs {
+	return paramtypes.ParamSetPairs{
+		paramtypes.NewParamSetPair(KeyUnbondingTime, &p.UnbondingTime, validateUnbondingTime),
+		paramtypes.NewParamSetPair(KeyMaxValidators, &p.MaxValidators, validateMaxValidators),
+		paramtypes.NewParamSetPair(KeyMaxEntries, &p.MaxEntries, validateMaxEntries),
+		paramtypes.NewParamSetPair(KeyHistoricalEntries, &p.HistoricalEntries, validateHistoricalEntries),
+		paramtypes.NewParamSetPair(KeyBondDenom, &p.BondDenom, validateBondDenom),
 	}
 }
 
@@ -84,20 +88,22 @@ func (p Params) String() string {
 }
 
 // unmarshal the current staking params value from store key or panic
-func MustUnmarshalParams(cdc *codec.Codec, value []byte) Params {
+func MustUnmarshalParams(cdc *codec.LegacyAmino, value []byte) Params {
 	params, err := UnmarshalParams(cdc, value)
 	if err != nil {
 		panic(err)
 	}
+
 	return params
 }
 
 // unmarshal the current staking params value from store key
-func UnmarshalParams(cdc *codec.Codec, value []byte) (params Params, err error) {
-	err = cdc.UnmarshalBinaryLengthPrefixed(value, &params)
+func UnmarshalParams(cdc *codec.LegacyAmino, value []byte) (params Params, err error) {
+	err = cdc.Unmarshal(value, &params)
 	if err != nil {
 		return
 	}
+
 	return
 }
 
@@ -106,12 +112,15 @@ func (p Params) Validate() error {
 	if err := validateUnbondingTime(p.UnbondingTime); err != nil {
 		return err
 	}
+
 	if err := validateMaxValidators(p.MaxValidators); err != nil {
 		return err
 	}
+
 	if err := validateMaxEntries(p.MaxEntries); err != nil {
 		return err
 	}
+
 	if err := validateBondDenom(p.BondDenom); err != nil {
 		return err
 	}
@@ -176,8 +185,22 @@ func validateBondDenom(i interface{}) error {
 	if strings.TrimSpace(v) == "" {
 		return errors.New("bond denom cannot be blank")
 	}
+
 	if err := sdk.ValidateDenom(v); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func ValidatePowerReduction(i interface{}) error {
+	v, ok := i.(sdk.Int)
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v.LT(sdk.NewInt(1)) {
+		return fmt.Errorf("power reduction cannot be lower than 1")
 	}
 
 	return nil

@@ -1,38 +1,67 @@
 package keys
 
 import (
+	"context"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/crypto/keys"
-	"github.com/cosmos/cosmos-sdk/tests"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func Test_runImportCmd(t *testing.T) {
-	runningUnattended := isRunningUnattended()
-	importKeyCommand := ImportKeyCommand()
-	mockIn, _, _ := tests.ApplyMockIO(importKeyCommand)
-
-	// Now add a temporary keybase
-	kbHome, cleanUp := tests.NewTestCaseDir(t)
-	defer cleanUp()
-	viper.Set(flags.FlagHome, kbHome)
-
-	if !runningUnattended {
-		kb, err := keys.NewKeyring(sdk.KeyringServiceName(), viper.GetString(flags.FlagKeyringBackend), viper.GetString(flags.FlagHome), mockIn)
-		require.NoError(t, err)
-		defer func() {
-			kb.Delete("keyname1", "", false)
-		}()
+	testCases := []struct {
+		name           string
+		keyringBackend string
+		userInput      string
+		expectError    bool
+	}{
+		{
+			name:           "test backend success",
+			keyringBackend: keyring.BackendTest,
+			// key armor passphrase
+			userInput: "123456789\n",
+		},
+		{
+			name:           "test backend fail with wrong armor pass",
+			keyringBackend: keyring.BackendTest,
+			userInput:      "987654321\n",
+			expectError:    true,
+		},
+		{
+			name:           "file backend success",
+			keyringBackend: keyring.BackendFile,
+			// key armor passphrase + keyring password x2
+			userInput: "123456789\n12345678\n12345678\n",
+		},
+		{
+			name:           "file backend fail with wrong armor pass",
+			keyringBackend: keyring.BackendFile,
+			userInput:      "987654321\n12345678\n12345678\n",
+			expectError:    true,
+		},
+		{
+			name:           "file backend fail with wrong keyring pass",
+			keyringBackend: keyring.BackendFile,
+			userInput:      "123465789\n12345678\n87654321\n",
+			expectError:    true,
+		},
+		{
+			name:           "file backend fail with no keyring pass",
+			keyringBackend: keyring.BackendFile,
+			userInput:      "123465789\n",
+			expectError:    true,
+		},
 	}
 
-	keyfile := filepath.Join(kbHome, "key.asc")
 	armoredKey := `-----BEGIN TENDERMINT PRIVATE KEY-----
 salt: A790BB721D1C094260EA84F5E5B72289
 kdf: bcrypt
@@ -42,13 +71,48 @@ HbP+c6JmeJy9JXe2rbbF1QtCX1gLqGcDQPBXiCtFvP7/8wTZtVOPj8vREzhZ9ElO
 =f3l4
 -----END TENDERMINT PRIVATE KEY-----
 `
-	require.NoError(t, ioutil.WriteFile(keyfile, []byte(armoredKey), 0644))
 
-	// Now enter password
-	if runningUnattended {
-		mockIn.Reset("123456789\n12345678\n12345678\n")
-	} else {
-		mockIn.Reset("123456789\n")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := ImportKeyCommand()
+			cmd.Flags().AddFlagSet(Commands("home").PersistentFlags())
+			mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
+
+			// Now add a temporary keybase
+			kbHome := t.TempDir()
+			kb, err := keyring.New(sdk.KeyringServiceName(), tc.keyringBackend, kbHome, nil)
+
+			clientCtx := client.Context{}.
+				WithKeyringDir(kbHome).
+				WithKeyring(kb).
+				WithInput(mockIn)
+			ctx := context.WithValue(context.Background(), client.ClientContextKey, &clientCtx)
+
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				kb.Delete("keyname1") // nolint:errcheck
+			})
+
+			keyfile := filepath.Join(kbHome, "key.asc")
+
+			require.NoError(t, ioutil.WriteFile(keyfile, []byte(armoredKey), 0644))
+
+			defer func() {
+				_ = os.RemoveAll(kbHome)
+			}()
+
+			mockIn.Reset(tc.userInput)
+			cmd.SetArgs([]string{
+				"keyname1", keyfile,
+				fmt.Sprintf("--%s=%s", flags.FlagKeyringBackend, tc.keyringBackend),
+			})
+
+			err = cmd.ExecuteContext(ctx)
+			if tc.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
-	require.NoError(t, runImportCmd(importKeyCommand, []string{"keyname1", keyfile}))
 }
