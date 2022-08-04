@@ -671,7 +671,7 @@ func (rs *Store) Snapshot(height uint64, format uint32) (<-chan io.ReadCloser, e
 		return strings.Compare(stores[i].name, stores[j].name) == -1
 	})
 
-	rs.logger.Info("load stores", "waiting_snap_store", stores)
+	rs.logger.WithField("waiting_snap_store", stores).Info("load stores")
 
 	// Spawn goroutine to generate snapshot chunks and pass their io.ReadClosers through a channel
 	ch := make(chan io.ReadCloser)
